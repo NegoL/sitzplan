@@ -1,14 +1,14 @@
-import { parseSeat, type AppState, type Plan, type Rule, type SchoolClass, type Student } from './types'
+import { parseSeat, type AppState, type SeatKey, type Plan, type Rule, type SchoolClass, type Student } from './types'
 
 /** The rules that apply in a given room: a fixed seat only counts in the room it was picked in. */
 export function rulesFor(cls: SchoolClass, roomId: string): Rule[] {
   return cls.rules.filter((r) => r.kind !== 'fixed' || r.roomId === roomId)
 }
 
-/** The plan to rotate away from: the latest earlier plan of the same class in the same room. */
+/** The plan to rotate away from: the latest earlier plan of the same class in the same room that has children seated. */
 export function previousPlan(state: AppState, plan: Plan): Plan | undefined {
   return state.plans
-    .filter((p) => p.classId === plan.classId && p.roomId === plan.roomId && p.createdAt < plan.createdAt)
+    .filter((p) => p.classId === plan.classId && p.roomId === plan.roomId && p.createdAt < plan.createdAt && Object.keys(p.assignment).length > 0)
     .sort((a, b) => b.createdAt - a.createdAt)[0]
 }
 
@@ -21,7 +21,7 @@ export function displayNames(students: Student[]): Map<string, string> {
   }
   const first = students.map((s) => s.first || s.last)
   const firstCount = count(first)
-  const initial = students.map((s, i) => (firstCount.get(first[i])! > 1 && s.last ? `${s.first} ${s.last[0]}.` : first[i]))
+  const initial = students.map((s, i) => (firstCount.get(first[i])! > 1 && s.first && s.last ? `${s.first} ${s.last[0]}.` : first[i]))
   const initialCount = count(initial)
   return new Map(students.map((s, i) => [s.id, initialCount.get(initial[i])! > 1 ? `${s.first} ${s.last}`.trim() : initial[i]]))
 }
@@ -42,6 +42,22 @@ export function removeStudent(state: AppState, classId: string, studentId: strin
   }
 }
 
+/** Changes a room's grid. Whatever pointed at a seat that no longer exists goes with it. */
+export function reshapeRoom(state: AppState, roomId: string, rows: number, cols: number, seats: SeatKey[]) {
+  const room = state.rooms.find((r) => r.id === roomId)
+  if (!room) return
+  room.rows = rows
+  room.cols = cols
+  room.seats = seats.filter((k) => parseSeat(k).row < rows && parseSeat(k).col < cols)
+  const left = new Set(room.seats)
+  for (const p of state.plans) {
+    if (p.roomId !== roomId) continue
+    p.blocked = p.blocked.filter((k) => left.has(k))
+    for (const [student, seat] of Object.entries(p.assignment)) if (!left.has(seat)) delete p.assignment[student]
+  }
+  for (const c of state.classes) c.rules = c.rules.filter((r) => r.kind !== 'fixed' || r.roomId !== roomId || left.has(r.seat))
+}
+
 export function removeClass(state: AppState, classId: string) {
   state.classes = state.classes.filter((c) => c.id !== classId)
   state.plans = state.plans.filter((p) => p.classId !== classId)
@@ -60,7 +76,7 @@ export function ruleText(rule: Rule, name: (id: string) => string, roomName: (id
   const who = name(rule.student)
   switch (rule.kind) {
     case 'beside':
-      return rule.others.length > 2
+      return rule.any
         ? `${who} sitzt neben mindestens einem von: ${rule.others.map(name).join(', ')}`
         : `${who} sitzt neben ${list(rule.others.map(name))}`
     case 'apart':

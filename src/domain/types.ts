@@ -24,8 +24,8 @@ export type Student = { id: string; first: string; last: string }
 export type Level = 'must' | 'nice'
 
 export type Rule =
-  /** 1–2 others: beside all of them. More: beside at least one of them. */
-  | { id: string; kind: 'beside'; level: Level; student: string; others: string[] }
+  /** Beside all of the others (at most two fit), or with `any` beside at least one of them. */
+  | { id: string; kind: 'beside'; level: Level; student: string; others: string[]; any: boolean }
   /** Not beside any of the others; `near` also forbids in front, behind and diagonal. */
   | { id: string; kind: 'apart'; level: Level; student: string; others: string[]; near: boolean }
   /** Within the first `rows` rows. */

@@ -27,12 +27,19 @@ export function ImportView({ id }: { id: string }) {
     }
   }
 
-  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, '')
-  const matches = listed?.filter((c) => norm(c.label).includes(norm(query))) ?? []
+  // "Klasse 07 B" and "7b" should find each other; a longer class name such as "7b Deutsch" should still find "7b".
+  const norm = (s: string) => s.toLowerCase().replace(/klasse/g, '').replace(/[^\p{L}\d]/gu, '').replace(/^0+/, '')
+  const q = norm(query)
+  const matches = listed?.filter((c) => !q || norm(c.label).includes(q) || q.includes(norm(c.label))) ?? []
 
   const adopt = () => {
     const have = new Set(cls.students.map((s) => `${s.last}|${s.first}`))
-    const fresh = review!.filter((n) => (n.first.trim() || n.last.trim()) && !have.has(`${n.last.trim()}|${n.first.trim()}`))
+    const fresh = review!.filter((n) => {
+      const key = `${n.last.trim()}|${n.first.trim()}`
+      if (key === '|' || have.has(key)) return false
+      have.add(key)
+      return true
+    })
     update((s) => {
       const c = s.classes.find((x) => x.id === id)!
       for (const n of fresh) c.students.push({ id: uid(), first: n.first.trim(), last: n.last.trim() })

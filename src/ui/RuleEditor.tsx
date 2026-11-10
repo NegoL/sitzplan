@@ -37,7 +37,7 @@ export function RuleEditor({ classId, ruleId }: { classId: string; ruleId: strin
     const base = { id: existing?.id ?? uid(), level, student }
     switch (kind) {
       case 'beside':
-        return { ...base, kind, others }
+        return { ...base, kind, others, any: others.length > 2 }
       case 'apart':
         return { ...base, kind, others, near }
       case 'front':

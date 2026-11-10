@@ -1,7 +1,7 @@
 export type Name = { last: string; first: string }
 export type ListedClass = { label: string; students: Name[] }
 
-const HEADING_WORD = /^(?:Klassenliste|Klasse|Kl\.)(?=[\s:])\s*:?\s*(\S.{0,11})$/i
+const HEADING_WORD = /^(?:Klassenliste|Klasse|Kl\.)(?=[\s:])\s*:?\s*(\d{1,2}\s?[a-zA-Z]{0,2}|\S{1,8})(?=$|[\s(,:;–-])/i
 const HEADING_BARE = /^(?:\d{1,2}\s?[a-zA-Z]{1,2}|EF|Q[1-4]|E[12]|\d{1,2}\.\d)$/
 const NUMBERING = /^\s*\d+[.)]?\s+/
 const WORD = "\\p{L}[\\p{L}'’.\\-]*"

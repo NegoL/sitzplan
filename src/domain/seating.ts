@@ -1,4 +1,4 @@
-import { parseSeat, type Assignment, type Level, type Room, type Rule, type SeatKey, type Student } from './types'
+import { parseSeat, seatKey, type Assignment, type Level, type Room, type Rule, type SeatKey, type Student } from './types'
 
 export type Violation = { ruleId: string; level: Level; students: string[] }
 
@@ -22,10 +22,12 @@ export type GenerateResult = {
   violations: Violation[]
   /** Ids of must rules that cannot all hold at once. Empty when they can. */
   conflict: string[]
-  tooFewSeats: boolean
   /** How many students have none of their previous neighbours. Null without a previous plan. */
-  rotation: { newNeighbours: number; total: number } | null
+  rotation: NeighbourChange | null
 }
+
+/** Of the `total` students seated in both plans, `newNeighbours` sit beside none of their earlier neighbours. */
+export type NeighbourChange = { newNeighbours: number; total: number }
 
 const MUST = 1e7
 const NICE = 1e4
@@ -39,6 +41,8 @@ const SAME_SEAT = 6
 type Model = {
   seatKeys: SeatKey[]
   row: number[]
+  /** 0 for the frontmost row that has seats, 1 for the next one, … */
+  rowRank: number[]
   col: number[]
   left: number[]
   right: number[]
@@ -56,8 +60,9 @@ function buildModel(room: Room, students: Student[], rules: Rule[], blocked: Sea
   const seatKeys = [...room.seats]
   const index = new Map(seatKeys.map((k, i) => [k, i]))
   const coords = seatKeys.map(parseSeat)
-  const at = (r: number, c: number) => index.get(`${r},${c}`) ?? -1
+  const at = (row: number, col: number) => index.get(seatKey({ row, col })) ?? -1
   const blockedSet = new Set(blocked)
+  const seatRows = [...new Set(coords.map((c) => c.row))].sort((a, b) => a - b)
   const ids = students.map((s) => s.id)
   const studentIndex = new Map(ids.map((id, i) => [id, i]))
   const indexed: IndexedRule[] = []
@@ -73,6 +78,7 @@ function buildModel(room: Room, students: Student[], rules: Rule[], blocked: Sea
   return {
     seatKeys,
     row: coords.map((c) => c.row),
+    rowRank: coords.map((c) => seatRows.indexOf(c.row)),
     col: coords.map((c) => c.col),
     left: coords.map((c) => at(c.row, c.col - 1)),
     right: coords.map((c) => at(c.row, c.col + 1)),
@@ -110,7 +116,7 @@ function broken(m: Model, r: IndexedRule, { pos, occ }: Seating, out?: number[][
   switch (rule.kind) {
     case 'beside': {
       const seated = r.others.filter((o) => pos[o] >= 0)
-      if (rule.others.length > 2) {
+      if (rule.any) {
         if (seated.length && !seated.some((o) => besideSeat(pos[o]))) {
           units = 1
           out?.push([r.student, ...seated])
@@ -139,8 +145,8 @@ function broken(m: Model, r: IndexedRule, { pos, occ }: Seating, out?: number[][
       }
       break
     case 'front':
-      if (m.row[p] >= rule.rows) {
-        units = m.row[p] - rule.rows + 1
+      if (m.rowRank[p] >= rule.rows) {
+        units = m.rowRank[p] - rule.rows + 1
         out?.push([r.student])
       }
       break
@@ -203,6 +209,25 @@ function previousOf(m: Model, assignment: Assignment): Previous {
     }
   })
   return { seat: pos, pairs }
+}
+
+function neighbourChange(m: Model, prev: Previous, { pos, occ }: Seating): NeighbourChange {
+  const n = m.ids.length
+  let total = 0
+  let newNeighbours = 0
+  pos.forEach((p, s) => {
+    if (p < 0 || prev.seat[s] < 0) return
+    total++
+    const now = [m.left[p], m.right[p]].filter((q) => q >= 0 && occ[q] >= 0).map((q) => occ[q])
+    if (!now.some((o) => prev.pairs.has(s * n + o))) newNeighbours++
+  })
+  return { newNeighbours, total }
+}
+
+/** How far a seating has rotated away from an earlier one in the same room. */
+export function rotation(room: Room, students: Student[], previous: Assignment, current: Assignment): NeighbourChange {
+  const m = buildModel(room, students, [], [])
+  return neighbourChange(m, previousOf(m, previous), seatingFrom(m, current))
 }
 
 /** Everything that is not a rule: free seats at the back, nobody alone, and rotating. */
@@ -329,7 +354,7 @@ function conflicting(search: Search, must: IndexedRule[]): string[] {
 }
 
 /**
- * Seats a class in a room. Must rules come first, then wishes, then free
+ * Seats a class in a room; if the room has too few seats, the last students stay unseated. Must rules come first, then wishes, then free
  * seats at the back with nobody alone, then rotating away from `previous`.
  */
 export function generate(input: GenerateInput): GenerateResult {
@@ -376,25 +401,10 @@ export function generate(input: GenerateInput): GenerateResult {
     if (p >= 0) assignment[m.ids[s]] = m.seatKeys[p]
   })
 
-  let rotation: GenerateResult['rotation'] = null
-  if (prev) {
-    const n = m.ids.length
-    let count = 0
-    let newNeighbours = 0
-    seating.pos.forEach((p, s) => {
-      if (p < 0 || prev.seat[s] < 0) return
-      count++
-      const now = [m.left[p], m.right[p]].filter((q) => q >= 0 && seating.occ[q] >= 0).map((q) => seating.occ[q])
-      if (!now.some((o) => prev.pairs.has(s * n + o))) newNeighbours++
-    })
-    rotation = { newNeighbours, total: count }
-  }
-
   return {
     assignment,
     violations: found,
     conflict: found.some((v) => v.level === 'must') ? conflicting(search, must) : [],
-    tooFewSeats: m.ids.length > m.usable.filter(Boolean).length,
-    rotation,
+    rotation: prev ? neighbourChange(m, prev, seating) : null,
   }
 }

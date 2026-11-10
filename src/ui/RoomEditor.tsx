@@ -1,5 +1,4 @@
-import { removeRoom } from '../domain/classroom'
-import { parseSeat, type Room } from '../domain/types'
+import { removeRoom, reshapeRoom } from '../domain/classroom'
 import { update, useAppState } from '../store'
 import { go, Missing, Page, SeatGrid } from './parts'
 
@@ -11,17 +10,10 @@ export function RoomEditor({ id }: { id: string }) {
   if (!room) return <Missing />
   const plans = state.plans.filter((p) => p.roomId === id).length
 
-  const change = (fn: (r: Room) => void) => update((s) => fn(s.rooms.find((r) => r.id === id)!))
-  const resize = (rows: number, cols: number) =>
-    change((r) => {
-      r.rows = Math.min(MAX, Math.max(1, rows))
-      r.cols = Math.min(MAX, Math.max(1, cols))
-      r.seats = r.seats.filter((k) => parseSeat(k).row < r.rows && parseSeat(k).col < r.cols)
-    })
+  const clamp = (n: number) => Math.min(MAX, Math.max(1, n))
+  const resize = (rows: number, cols: number) => update((s) => reshapeRoom(s, id, clamp(rows), clamp(cols), room.seats))
   const toggle = (key: string) =>
-    change((r) => {
-      r.seats = r.seats.includes(key) ? r.seats.filter((k) => k !== key) : [...r.seats, key]
-    })
+    update((s) => reshapeRoom(s, id, room.rows, room.cols, room.seats.includes(key) ? room.seats.filter((k) => k !== key) : [...room.seats, key]))
   const remove = () => {
     const warning = plans ? `„${room.name}“ löschen? ${plans === 1 ? 'Ein Plan' : `${plans} Pläne`} in diesem Raum gehen mit verloren.` : `„${room.name}“ löschen?`
     if (!confirm(warning)) return
@@ -34,7 +26,7 @@ export function RoomEditor({ id }: { id: string }) {
       <section>
         <label>
           Name
-          <input value={room.name} onInput={(e) => change((r) => void (r.name = e.currentTarget.value))} />
+          <input value={room.name} onInput={(e) => update((s) => void (s.rooms.find((r) => r.id === id)!.name = e.currentTarget.value))} />
         </label>
         <div class="steppers">
           <Stepper label="Reihen" value={room.rows} set={(v) => resize(v, room.cols)} />
@@ -44,7 +36,7 @@ export function RoomEditor({ id }: { id: string }) {
       <section>
         <p class="soft">
           Tippe ein Feld an, um dort einen Platz zu setzen oder zu entfernen. Plätze direkt nebeneinander gelten als Sitznachbarn, ein leeres Feld
-          dazwischen ist ein Gang. {room.seats.length} Plätze.
+          dazwischen ist ein Gang. Entfernst du einen Platz, verschwindet auch ein fester Platz, der auf ihn zeigt. {room.seats.length} Plätze.
         </p>
         <div class="scroll">
           <SeatGrid room={room} size={Math.max(30, Math.min(56, Math.floor(340 / room.cols)))} cell={() => ({ tappable: true })} onTap={toggle} />

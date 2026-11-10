@@ -37,6 +37,11 @@ it('keeps only the name from lines with numbering and further columns', () => {
   })
 })
 
+it('takes the class from a heading that carries more text', () => {
+  const pages = [['Klasse 7a', 'Albrecht, Mia'], ['Klasse 7b (Klassenleitung: Frau Beispiel)', 'Baumann, Noah'], ['Klasse 7c\tSchuljahr 2026/27', 'Conrad, Lea']]
+  expect(parseClassList(pages).map((c) => [c.label, c.students.length])).toEqual([['7a', 1], ['7b', 1], ['7c', 1]])
+})
+
 it('reads upper-school year groups as classes', () => {
   const pages = [['EF', 'Ernst, Tom'], ['Q1', 'Franke, Ida']]
   expect(parseClassList(pages).map((c) => c.label)).toEqual(['EF', 'Q1'])

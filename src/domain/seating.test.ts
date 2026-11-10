@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { check, generate, type GenerateInput } from './seating'
+import { check, generate, rotation, type GenerateInput } from './seating'
 import type { Assignment, Room, Rule, Student } from './types'
 
 /** Builds a room from a drawing. Last line is the row nearest the board; '#' is a seat, '.' an aisle. */
@@ -36,9 +36,9 @@ describe('generate', () => {
     for (const k of used) expect(room('###', '###').seats).toContain(k)
   })
 
-  it('reports when the room has too few seats', () => {
+  it('seats as many students as the room holds', () => {
     const r = generate(input({ room: room('##'), students: students('a', 'b', 'c') }))
-    expect(r.tooFewSeats).toBe(true)
+    expect(Object.values(r.assignment).sort()).toEqual(['0,0', '0,1'])
   })
 
   it('never uses a blocked seat', () => {
@@ -49,21 +49,21 @@ describe('generate', () => {
   })
 
   it('seats two students beside each other when a rule demands it', () => {
-    const rules: Rule[] = [{ id: '1', kind: 'beside', level: 'must', student: 'a', others: ['f'] }]
+    const rules: Rule[] = [{ id: '1', kind: 'beside', level: 'must', student: 'a', others: ['f'], any: false }]
     const r = generate(input({ room: room('##.##', '##.##'), students: students('a', 'b', 'c', 'd', 'e', 'f'), rules }))
     expect(beside(r.assignment, 'a', 'f')).toBe(true)
     expect(r.violations).toEqual([])
   })
 
   it('puts a student between two required neighbours', () => {
-    const rules: Rule[] = [{ id: '1', kind: 'beside', level: 'must', student: 'a', others: ['b', 'c'] }]
+    const rules: Rule[] = [{ id: '1', kind: 'beside', level: 'must', student: 'a', others: ['b', 'c'], any: false }]
     const r = generate(input({ room: room('####', '####'), students: students('a', 'b', 'c', 'd', 'e', 'f', 'g'), rules }))
     expect(beside(r.assignment, 'a', 'b')).toBe(true)
     expect(beside(r.assignment, 'a', 'c')).toBe(true)
   })
 
-  it('needs only one of them beside when more than two are named', () => {
-    const rules: Rule[] = [{ id: '1', kind: 'beside', level: 'must', student: 'a', others: ['b', 'c', 'd'] }]
+  it('needs only one of them beside when the rule says any', () => {
+    const rules: Rule[] = [{ id: '1', kind: 'beside', level: 'must', student: 'a', others: ['b', 'c', 'd'], any: true }]
     const r = generate(input({ room: room('####', '####'), students: students('a', 'b', 'c', 'd', 'e', 'f', 'g'), rules }))
     expect(['b', 'c', 'd'].some((o) => beside(r.assignment, 'a', o))).toBe(true)
     expect(r.violations).toEqual([])
@@ -98,6 +98,13 @@ describe('generate', () => {
     }
   })
 
+  it('counts the first row from the frontmost row that has seats', () => {
+    const rules: Rule[] = [{ id: '1', kind: 'front', level: 'must', student: 'a', rows: 1 }]
+    const r = generate(input({ room: room('##', '##', '..'), students: students('a', 'b', 'c', 'd'), rules }))
+    expect(rowOf(r.assignment, 'a')).toBe(1)
+    expect(r.violations).toEqual([])
+  })
+
   it('seats a student on a fixed seat', () => {
     const rules: Rule[] = [{ id: '1', kind: 'fixed', level: 'must', student: 'a', seat: '1,2', roomId: 'r' }]
     const r = generate(input({ room: room('###', '###'), students: students('a', 'b', 'c', 'd', 'e'), rules }))
@@ -122,7 +129,7 @@ describe('generate', () => {
 
   it('breaks a wish rather than a must rule', () => {
     const rules: Rule[] = [
-      { id: 'wish', kind: 'beside', level: 'nice', student: 'a', others: ['b'] },
+      { id: 'wish', kind: 'beside', level: 'nice', student: 'a', others: ['b'], any: false },
       { id: 'must', kind: 'apart', level: 'must', student: 'a', others: ['b'], near: false },
     ]
     const r = generate(input({ room: room('##', '##'), students: students('a', 'b', 'c', 'd'), rules }))
@@ -134,7 +141,7 @@ describe('generate', () => {
   it('names the must rules that contradict each other', () => {
     const rules: Rule[] = [
       { id: 'ok', kind: 'front', level: 'must', student: 'c', rows: 1 },
-      { id: 'together', kind: 'beside', level: 'must', student: 'a', others: ['b'] },
+      { id: 'together', kind: 'beside', level: 'must', student: 'a', others: ['b'], any: false },
       { id: 'apart', kind: 'apart', level: 'must', student: 'b', others: ['a'], near: false },
     ]
     const r = generate(input({ room: room('##', '##'), students: students('a', 'b', 'c', 'd'), rules }))
@@ -183,10 +190,19 @@ describe('generate', () => {
     const names = ['a', 'b', 'c', 'd']
     const rm = room('##', '##')
     const previous: Assignment = { a: '0,0', b: '0,1', c: '1,0', d: '1,1' }
-    const rules: Rule[] = [{ id: '1', kind: 'beside', level: 'nice', student: 'a', others: ['b'] }]
+    const rules: Rule[] = [{ id: '1', kind: 'beside', level: 'nice', student: 'a', others: ['b'], any: false }]
     const r = generate(input({ room: rm, students: students(...names), rules, previous }))
     expect(beside(r.assignment, 'a', 'b')).toBe(true)
     expect(r.rotation).toEqual({ newNeighbours: 0, total: 4 })
+  })
+})
+
+describe('rotation', () => {
+  it('counts the students who sit beside none of their earlier neighbours', () => {
+    const rm = room('##.##')
+    const before: Assignment = { a: '0,0', b: '0,1', c: '0,3', d: '0,4' }
+    const after: Assignment = { a: '0,0', b: '0,1', c: '0,4' }
+    expect(rotation(rm, students('a', 'b', 'c', 'd'), before, after)).toEqual({ newNeighbours: 1, total: 3 })
   })
 })
 
@@ -196,7 +212,7 @@ describe('check', () => {
   const seated: Assignment = { a: '0,0', b: '0,1', c: '0,3', d: '0,4' }
 
   it('does not count students across an aisle as beside each other', () => {
-    const rules: Rule[] = [{ id: '1', kind: 'beside', level: 'must', student: 'b', others: ['c'] }]
+    const rules: Rule[] = [{ id: '1', kind: 'beside', level: 'must', student: 'b', others: ['c'], any: false }]
     expect(check(rm, all, rules, seated)).toEqual([{ ruleId: '1', level: 'must', students: ['b', 'c'] }])
   })
 
@@ -228,7 +244,7 @@ describe('check', () => {
   })
 
   it('ignores rules about students without a seat', () => {
-    const rules: Rule[] = [{ id: '1', kind: 'beside', level: 'must', student: 'a', others: ['z'] }]
+    const rules: Rule[] = [{ id: '1', kind: 'beside', level: 'must', student: 'a', others: ['z'], any: false }]
     expect(check(rm, all, rules, seated)).toEqual([])
   })
 })

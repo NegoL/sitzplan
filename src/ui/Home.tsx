@@ -1,5 +1,5 @@
 import { useRef, useState } from 'preact/hooks'
-import type { Room } from '../domain/types'
+import { seatKey, type Room } from '../domain/types'
 import { shareFile } from '../pdf/print'
 import { backupJson, restoreBackup, uid, update, useAppState } from '../store'
 import { go, Page } from './parts'
@@ -7,7 +7,7 @@ import { go, Page } from './parts'
 /** Five rows of three double desks with two aisles: a common starting point. */
 function defaultRoom(name: string): Room {
   const seats: string[] = []
-  for (let row = 0; row < 5; row++) for (const col of [0, 1, 3, 4, 6, 7]) seats.push(`${row},${col}`)
+  for (let row = 0; row < 5; row++) for (const col of [0, 1, 3, 4, 6, 7]) seats.push(seatKey({ row, col }))
   return { id: uid(), name, rows: 5, cols: 8, seats }
 }
 

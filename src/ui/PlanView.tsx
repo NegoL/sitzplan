@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { displayNames, previousPlan, ruleText, rulesFor } from '../domain/classroom'
-import { check, generate, type GenerateResult } from '../domain/seating'
+import { check, generate, rotation, type GenerateResult } from '../domain/seating'
 import type { Assignment, Level, Plan, SeatKey } from '../domain/types'
 import { planPdf, shareFile } from '../pdf/print'
 import { update, useAppState } from '../store'
@@ -71,6 +71,8 @@ export function PlanView({ id }: { id: string }) {
   const violations = check(room, cls.students, rules, assignment)
   const mark = new Map<string, Level>()
   for (const v of violations) for (const s of v.students) if (mark.get(s) !== 'must') mark.set(s, v.level)
+  const previous = previousPlan(state, plan)?.assignment
+  const rotated = previous && occupant.size > 0 ? rotation(room, cls.students, previous, assignment) : null
   const fit = Math.max(34, Math.min(72, Math.floor((Math.min(innerWidth, 640) - 32) / room.cols) - 4))
   const cellSize = size || fit
 
@@ -91,7 +93,7 @@ export function PlanView({ id }: { id: string }) {
         rules,
         blocked: plan.blocked,
         pinned: Object.fromEntries(plan.pinned.filter((s) => assignment[s]).map((s) => [s, assignment[s]])),
-        previous: previousPlan(state, plan)?.assignment,
+        previous,
         seed: Math.floor(Math.random() * 2 ** 31),
       })
       change((p) => void (p.assignment = res.assignment))
@@ -151,7 +153,7 @@ export function PlanView({ id }: { id: string }) {
 
   const must = violations.filter((v) => v.level === 'must').length
   const nice = violations.length - must
-  const missing = cls.students.length - (room.seats.length - plan.blocked.length)
+  const missing = cls.students.length - room.seats.filter((k) => !plan.blocked.includes(k)).length
   const roomName = () => room.name
   const empty = occupant.size === 0
 
@@ -172,9 +174,9 @@ export function PlanView({ id }: { id: string }) {
             Der Raum hat {missing === 1 ? 'einen Platz' : `${missing} Plätze`} zu wenig für {cls.students.length} Kinder.
           </p>
         )}
-        {result?.rotation && (
+        {rotated && rotated.total > 0 && (
           <p class="soft">
-            {result.rotation.newNeighbours} von {result.rotation.total} Kindern haben neue Sitznachbarn.
+            {rotated.newNeighbours} von {rotated.total} Kindern haben neue Sitznachbarn gegenüber dem letzten Plan in diesem Raum.
           </p>
         )}
         {violations.length > 0 && (
