@@ -21,6 +21,7 @@ npm run dev        # lokal starten
 npm test           # Tests der Platzvergabe und des Klassenlisten-Imports
 npm run typecheck
 npm run build      # nach dist/
+./deploy.sh        # testen, bauen und nach GitHub Pages veröffentlichen (Zweig gh-pages)
 ```
 
 Die Platzvergabe liegt in `src/domain/seating.ts`, der Klassenlisten-Import in `src/domain/classlist.ts`. Beide sind reine Funktionen mit Tests daneben. Testdaten enthalten nur erfundene Namen.
